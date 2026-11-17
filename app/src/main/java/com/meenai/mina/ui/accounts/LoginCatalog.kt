@@ -19,12 +19,14 @@ data class LoginEntry(
     val siteKey: String,
     /** Ye session Cookie(s) mile to login pakka maano; khali ho to sirf site registry ka saboot chalega. */
     val sessionCookies: List<String>,
+    /** Phone-number login wale site (abhi sirf WhatsApp): desktop page pairing code dikhata hai, user apne phone ke WhatsApp me daalta hai. */
+    val phoneCodeLogin: Boolean = false,
 )
 
 object LoginCatalog {
 
     val entries: Map<String, LoginEntry> = mapOf(
-        "whatsapp" to LoginEntry("https://web.whatsapp.com/", "whatsapp.com", emptyList()),
+        "whatsapp" to LoginEntry("https://web.whatsapp.com/", "whatsapp.com", emptyList(), phoneCodeLogin = true),
         "instagram" to LoginEntry("https://www.instagram.com/accounts/login/", "instagram.com", listOf("sessionid", "ds_user_id")),
         "facebook" to LoginEntry("https://www.facebook.com/login/", "facebook.com", listOf("c_user", "xs")),
         "x" to LoginEntry("https://x.com/i/flow/login", "x.com", listOf("auth_token")),

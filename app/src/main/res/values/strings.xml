@@ -250,4 +250,7 @@
     <string name="accounts_paste">Paste</string>
     <string name="accounts_show">Show</string>
     <string name="accounts_hide">Hide</string>
+    <string name="browser_phone_code_title">WhatsApp code</string>
+    <string name="browser_phone_code_body">Copy this code. On your phone: WhatsApp > Settings > Linked devices > Link a device > Log in with phone number, then enter it.</string>
+    <string name="browser_phone_code_copy">Copy</string>
 </resources>

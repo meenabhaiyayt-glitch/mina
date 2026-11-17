@@ -134,7 +134,8 @@ fun AccountsScreen(onBack: () -> Unit, onOpenBrowser: () -> Unit = {}) {
         val entry = LoginCatalog.entry(item.id)
         if (entry != null) {
             val browser = UserBrowser.of(context)
-            browser.open(entry.loginUrl)
+            // WhatsApp jaise phone-code login: desktop page pe pairing code aata hai, Mina use pakad ke dikhata hai
+            if (entry.phoneCodeLogin) browser.openPhoneCodeLogin(entry.loginUrl) else browser.open(entry.loginUrl)
             // Ye site aage browser ki start page (常用网站) pe bhi dikhe, apne logo ke saath.
             browser.favorites.add(entry.loginUrl)
             onOpenBrowser()

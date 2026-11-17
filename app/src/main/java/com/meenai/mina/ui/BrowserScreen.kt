@@ -38,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -121,6 +123,7 @@ fun BrowserScreen(browser: UserBrowser, onBack: () -> Unit) {
     val find by browser.find.collectAsState()
     val fullscreen by browser.fullscreen.collectAsState()
     val searchEngines by browser.searchEngine.choices.collectAsState()
+    val phoneCode by browser.phoneCode.collectAsState()
     val activity = remember(context) { context.findActivity() }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
     var bookmarksOpen by rememberSaveable { mutableStateOf(false) }
@@ -401,6 +404,7 @@ fun BrowserScreen(browser: UserBrowser, onBack: () -> Unit) {
     }
 
     dialog?.let { d -> PageDialogBox(d, browser::answerDialog) }
+    phoneCode?.let { code -> PhoneCodeDialog(code, onDone = browser::codeSeen) }
 }
 
 private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -458,6 +462,26 @@ private fun openOutside(context: Context, url: String): String? = try {
 }
 
 /** 页面弹框:提示只有「好」;确认和离开页面有「取消」;输入框弹框带一个输入框。 */
+/** 手机号登录(WhatsApp):页面上出现的配对码,复制了去手机 WhatsApp 里输入。 */
+@Composable
+private fun PhoneCodeDialog(code: String, onDone: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    MinaDialog(
+        onDismissRequest = onDone,
+        title = { Text(tr(R.string.browser_phone_code_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr(R.string.browser_phone_code_body))
+                Text(code, style = MinaType.BodyStrong)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }) { Text(tr(R.string.browser_phone_code_copy)) }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text(tr(R.string.ok_yes)) } },
+    )
+}
+
 @Composable
 private fun PageDialogBox(d: PageDialog, answer: (Boolean, String?) -> Unit) {
     var input by remember(d) { mutableStateOf(d.defaultText.orEmpty()) }

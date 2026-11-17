@@ -254,6 +254,84 @@ class UserBrowser private constructor(private val app: Context) {
         }
     }
 
+    // ---------- 手机号登录(WhatsApp):盯着页面上出现的配对码 ----------
+
+    private val _phoneCode = MutableStateFlow<String?>(null)
+    /** 页面已经出示、还没被用户收掉的配对码(现在只有 WhatsApp 用);null = 没在看,或已经收掉。 */
+    val phoneCode: StateFlow<String?> = _phoneCode.asStateFlow()
+    private var codeWatchTab: WebTab? = null
+    private var codeWatchRun: Runnable? = null
+
+    /**
+     * 需要电脑版页面和配对码的登录(WhatsApp 的「用手机号登录」):把这个网站记成电脑版再打开,
+     * 同时盯着页面;配对码一出现就弹给用户抄,用户在手机 WhatsApp 里输入后,页面变成已登录的
+     * 应用界面,按看到的把网站记成已登录,盯看收场。
+     */
+    fun openPhoneCodeLogin(url: String): String? {
+        val host = WebUrlPolicy.host(url)
+        if (host != PhoneCodeLogin.HOST) return open(url)
+        refusal(url)?.let { return it }
+        modes.set(host, true)
+        val err = load(url, null)
+        if (err == null) tab?.let(::startCodeWatch)
+        return err
+    }
+
+    /** 用户抄完了码:把码收掉;盯看继续,换了新的码会再弹。 */
+    fun codeSeen() {
+        _phoneCode.value = null
+    }
+
+    /** 盯看收场:回调撤下,码也收掉。 */
+    fun stopCodeWatch() {
+        codeWatchRun?.let(main::removeCallbacks)
+        codeWatchRun = null
+        codeWatchTab = null
+        _phoneCode.value = null
+    }
+
+    private fun startCodeWatch(t: WebTab) {
+        stopCodeWatch()
+        codeWatchTab = t
+        var seen = ""
+        val run = object : Runnable {
+            override fun run() {
+                codeWatchRun = null
+                val url = t.view.url
+                val left = url != null && url.startsWith("http") &&
+                    WebUrlPolicy.host(url) != PhoneCodeLogin.HOST
+                if (t.destroyed || t !== tab || left) {
+                    stopCodeWatch()
+                    return
+                }
+                t.view.evaluateJavascript(PhoneCodeLogin.SCRIPT) { raw ->
+                    if (t.destroyed) return@evaluateJavascript
+                    val r = PhoneCodeLogin.parse(raw)
+                    r?.code?.takeIf { it != seen }?.let { code ->
+                        seen = code
+                        _phoneCode.value = code
+                    }
+                    if (r?.inApp == true) {
+                        // 页面已经是登录后的应用界面:按看到的记上(登记表里已有就不重复报)。
+                        if (!BrowserFavorites.loggedIn(sites.list(), PhoneCodeLogin.HOST)) {
+                            sites.markLoggedIn(WebUrlPolicy.registrable(PhoneCodeLogin.HOST) ?: PhoneCodeLogin.HOST)
+                            WebTab.cookieManager().flush()
+                            _notice.value = LOGGED_IN_NOTICE
+                        }
+                        stopCodeWatch()
+                        return@evaluateJavascript
+                    }
+                    if (!t.destroyed) {
+                        codeWatchRun = this
+                        main.postDelayed(this, CODE_POLL_MS)
+                    }
+                }
+            }
+        }
+        codeWatchRun = run
+        main.postDelayed(run, CODE_POLL_MS)
+    }
+
     private fun load(url: String, login: String?): String? {
         refusal(url)?.let { return it }
         stopFind()
@@ -297,6 +375,7 @@ class UserBrowser private constructor(private val app: Context) {
         probes.values.forEach(main::removeCallbacks)
         probes.clear()
         loginFor.clear()
+        stopCodeWatch()
         opener = null
         tab?.takeIf { it !in openTabs }?.let { popup ->
             if (!loans.closing(popup)) popup.destroy() else handedOff(popup)
@@ -820,6 +899,7 @@ class UserBrowser private constructor(private val app: Context) {
         const val OWNER = "user-browser"
         private const val PROBE_DELAY_MS = 1_500L
         private const val PROBE_RETRIES = 3
+        private const val CODE_POLL_MS = 3_000L
         private const val CONFIRM_WAIT_MS = 2_500L
         /** 收下的网站图标至少这么大,存的时候至多这么大(像素)。 */
         private const val MIN_ICON_PX = 16

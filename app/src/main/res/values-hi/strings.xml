@@ -250,4 +250,7 @@
     <string name="accounts_paste">\u092A\u0947\u0938\u094D\u091F \u0915\u0930\u0947\u0902</string>
     <string name="accounts_show">\u0926\u093F\u0916\u093E\u090F\u0901</string>
     <string name="accounts_hide">\u091B\u093F\u092A\u093E\u090F\u0901</string>
+    <string name="browser_phone_code_title">WhatsApp कोड</string>
+    <string name="browser_phone_code_body">यह कोड कॉपी करें। अपने फ़ोन में: WhatsApp > Settings > Linked devices > Link a device > Log in with phone number खोलकर यह कोड डालें।</string>
+    <string name="browser_phone_code_copy">कॉपी</string>
 </resources>
