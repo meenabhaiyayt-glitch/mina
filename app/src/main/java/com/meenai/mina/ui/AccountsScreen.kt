@@ -179,7 +179,7 @@ fun AccountsContent(
 
     GlassPage {
         Box(Modifier.fillMaxSize()) {
-            val pagerState = rememberPagerState(initialPage = state.selectedTab, pageCount = { 4 })
+            val pagerState = rememberPagerState(initialPage = state.selectedTab, pageCount = { 3 })
             LaunchedEffect(state.selectedTab) {
                 if (pagerState.settledPage != state.selectedTab && pagerState.currentPage != state.selectedTab) {
                     pagerState.animateScrollToPage(state.selectedTab)
@@ -199,7 +199,7 @@ fun AccountsContent(
                     contentPadding = PaddingValues(top = topPad, bottom = bottomPad),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    if (state.signedIn == false && (page == 0 || page == 1)) {
+                    if (state.signedIn == false && page == 0) {
                         item(key = "signedout") {
                             Text(
                                 tr(R.string.connectors_signed_out),
@@ -406,28 +406,24 @@ private fun sectionsFor(page: Int, state: AccountsUiState): List<AccountSection>
         AccountSection(tr(R.string.accounts_section_api_keys), byType(AccountType.API_KEY)),
     )
     return when (page) {
-        1 -> listOf(AccountSection(null, byType(AccountType.CONNECTION)))
-        2 -> listOf(AccountSection(null, byType(AccountType.LOGIN)))
-        3 -> listOf(AccountSection(null, byType(AccountType.API_KEY)))
+        0 -> listOf(AccountSection(null, byType(AccountType.CONNECTION)))
+        1 -> listOf(AccountSection(null, byType(AccountType.LOGIN)))
+        2 -> listOf(AccountSection(null, byType(AccountType.API_KEY)))
         else -> all
     }.filter { it.rows.isNotEmpty() }
 }
 
-@Preview(name = "All", showBackground = true, widthDp = 412, heightDp = 900)
-@Composable
-private fun AccountsPreviewAll() = PreviewState(0)
-
 @Preview(name = "Connections", showBackground = true, widthDp = 412, heightDp = 900)
 @Composable
-private fun AccountsPreviewConnections() = PreviewState(1)
+private fun AccountsPreviewConnections() = PreviewState(0)
 
 @Preview(name = "Logins", showBackground = true, widthDp = 412, heightDp = 900)
 @Composable
-private fun AccountsPreviewLogins() = PreviewState(2)
+private fun AccountsPreviewLogins() = PreviewState(1)
 
 @Preview(name = "API Keys", showBackground = true, widthDp = 412, heightDp = 900)
 @Composable
-private fun AccountsPreviewApiKeys() = PreviewState(3)
+private fun AccountsPreviewApiKeys() = PreviewState(2)
 
 @Composable
 private fun PreviewState(tab: Int) {
