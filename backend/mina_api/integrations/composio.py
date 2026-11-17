@@ -354,7 +354,10 @@ class ComposioService:
             # The toolkit must exist in Composio's catalog; any toolkit
             # Composio offers is connectable, unknown slugs 404.
             sdk.toolkits.get(slug=toolkit_slug)
-            request = sdk.connected_accounts.initiate(
+            # Composio retired the legacy connect endpoint for
+            # Composio-managed OAuth; .link() is the supported path and
+            # returns the same ConnectionRequest shape (id/status/redirect_url).
+            request = sdk.connected_accounts.link(
                 user_namespace(user_id),
                 auth_config_id=auth_config_id,
                 callback_url=callback_url,

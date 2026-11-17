@@ -111,7 +111,7 @@ class FakeConnectedAccounts:
         self.deleted: list[tuple[str, object]] = []
         self.initiated: list[dict] = []
 
-    def initiate(self, user_ns, auth_config_id, callback_url=None, allow_multiple=False, **kwargs):
+    def link(self, user_ns, auth_config_id, callback_url=None, allow_multiple=False, **kwargs):
         self.initiated.append(
             {"user_ns": user_ns, "auth_config_id": auth_config_id, "callback_url": callback_url}
         )
