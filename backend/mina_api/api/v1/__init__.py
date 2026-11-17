@@ -8,6 +8,7 @@ from mina_api.api.v1 import (
     connections,
     conversations,
     health,
+    homedata,
     logos,
     me,
     memory,
@@ -20,6 +21,7 @@ from mina_api.api.v1 import (
 
 v1_router = APIRouter()
 v1_router.include_router(health.router)
+v1_router.include_router(homedata.router)
 v1_router.include_router(agent.router)
 v1_router.include_router(me.router)
 v1_router.include_router(conversations.router)
