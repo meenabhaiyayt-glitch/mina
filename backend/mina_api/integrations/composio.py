@@ -242,6 +242,14 @@ class ComposioService:
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001 - mapped below
+            # Composio/SDK failures surface to the app as a terse mapped
+            # status; the real cause lands here so prod logs can be debugged.
+            LOG.warning(
+                "composio call failed: %s: %s",
+                type(exc).__name__,
+                str(exc)[:500],
+                exc_info=exc,
+            )
             raise self._map_error(exc) from exc
 
     @staticmethod
@@ -295,10 +303,17 @@ class ComposioService:
                 return HTTPException(429, detail="composio_rate_limited")
             if status and 400 <= status < 500:
                 return HTTPException(400, detail="invalid_request")
-            return HTTPException(502, detail="composio_error")
+            return HTTPException(
+                502, detail=f"composio_error: upstream {status}"
+            )
         if isinstance(exc, composio_errors.ComposioError):
-            return HTTPException(502, detail="composio_error")
-        return HTTPException(502, detail="composio_error")
+            return HTTPException(
+                502,
+                detail=f"composio_error: {type(exc).__name__}",
+            )
+        return HTTPException(
+            502, detail=f"composio_error: {type(exc).__name__}"
+        )
 
     # -- auth configs ------------------------------------------------------
 
@@ -311,7 +326,7 @@ class ComposioService:
 
         def _run() -> str:
             sdk = self._sdk()
-            existing = sdk.auth_configs.list(toolkits=[toolkit_slug])
+            existing = sdk.auth_configs.list(toolkit_slug=toolkit_slug)
             items = list(getattr(existing, "items", None) or [])
             for item in items:
                 if not getattr(item, "is_disabled", False):
