@@ -57,6 +57,10 @@ class PanelsStore(context: Context) {
 
     fun remove(id: String) = synchronized(lock) { write(read().filterNot { it.id == id }) }
 
+    /** Naya panel: id aur updatedAt khud. weather/track/calendar/mail ke saath ab "custom" bhi (chat se bane wale). */
+    fun create(kind: String, name: String, rows: List<String> = emptyList()): HomePanel =
+        HomePanel(id = java.util.UUID.randomUUID().toString(), kind = kind, name = name, rows = rows, updatedAt = System.currentTimeMillis()).also { put(it) }
+
     private fun read(): List<HomePanel> = runCatching {
         if (!file.isFile) return emptyList()
         json.parseToJsonElement(file.readText()).jsonArray.mapNotNull { row ->

@@ -255,6 +255,12 @@
     <string name="browser_phone_code_copy">Copy</string>
     <string name="panel_kind_calendar">Calendar</string>
     <string name="panel_kind_mail">Mail</string>
+    <string name="panel_kind_custom">Panel</string>
+    <string name="panel_ai_create">Make it with AI (chat)</string>
+    <string name="panel_ai_ask">Make me a new home panel</string>
+    <string name="panel_live">&quot;%s&quot; panel is live on your Home</string>
+    <string name="panel_days">%d days</string>
+    <string name="panel_today">Today</string>
     <string name="panel_reconnect">Reconnect</string>
     <string name="panel_reconnect_hint">Connection expired. Reconnect it from Accounts.</string>
     <string name="panel_no_data">Nothing new right now</string>

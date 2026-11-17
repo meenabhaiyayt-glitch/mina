@@ -280,6 +280,7 @@ class MinaApp : Application(), WebOwner, SandboxOwner, TaskEnvironment.Owner, Ph
                 .stateIn(scope, SharingStarted.Eagerly, SandboxState.get(app).status.value !is SandboxStatus.Unsupported),
             // 云端代理:开关开着时对话交给服务端的编排器(它连着已连接的账号);失败再落回本地
             cloudAgentFactory = { com.meenai.mina.server.ServerAgentRun(ServerRuntime.obtain(app).api) },
+            panelSaver = { name, rows -> com.meenai.mina.home.PanelsStore.shared(app).create("custom", name, rows) },
             cloudEnabled = { com.meenai.mina.server.CloudAgentStore.enabled(app) && ServerRuntime.enabled },
             sharedFiles = taskState.sharedFiles,
             activities = taskState.activities,

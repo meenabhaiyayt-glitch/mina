@@ -45,6 +45,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import com.meenai.mina.core.tool.ToolIndex
 import com.meenai.mina.core.assembly.knownTools
 import com.meenai.mina.core.cap.web.AttachedPage
@@ -284,6 +290,15 @@ data class ChatUi(
  * 等待模型时仅显示状态。任务在跑时输入框发的话交给这个任务(插话)。
  * 整个进程只用一个实例,界面关掉再打开时正在跑的任务的步骤还在。
  */
+/** Jawab me chhupa mina-panel block: ```mina-panel {"name": ..., "rows": [...], ...}```. */
+private val PANEL_BLOCK = Regex("```mina-panel\\s*(\\{[\\s\\S]*?\\})\\s*```")
+
+/** Block hata kar saaf text deta hai (panel banaye bina, purani baatein dikhate waqt). */
+private fun stripPanel(answer: String): String {
+    val m = PANEL_BLOCK.find(answer) ?: return answer
+    return (answer.take(m.range.first) + answer.substring(m.range.last + 1)).trim()
+}
+
 class ChatViewModel(
     private val scope: CoroutineScope,
     taskState: StateFlow<TaskState>,
@@ -358,6 +373,8 @@ class ChatViewModel(
     /** 云端代理:开着时新的对话回合交给服务端的编排器跑(它连着用户已连接的账号),失败再落回本地。 */
     private val cloudAgentFactory: (() -> com.meenai.mina.server.ServerAgentRun)? = null,
     private val cloudEnabled: () -> Boolean = { false },
+    /** Home panel banao: jawab se mina-panel block pakad kar panel Home pe live karta hai. */
+    private val panelSaver: ((String, List<String>) -> Unit)? = null,
 ) {
     /** 用户在对话页上关掉留在后台的那一页。 */
     fun closeKeptPage() = closeKept()
@@ -694,8 +711,19 @@ class ChatViewModel(
         return true
     }
 
-    /** 在对话 [id] 里开始新任务 [goal]:界面上加一问一答,交给服务(并行关着、服务还忙时排在它收尾后面)。 */
-    private fun begin(goal: String, id: String) {
+    /** Panel banao wale ask ke saath model ko chupke se mina-panel block ka format bhi bata dete hain. */
+    private val panelSpecInstruction = """
+
+Panel banana hai: pehle pucho kya panel chahiye (agar user ne pehle nahi bataya), phir jab panel ready ho to apne jawab ke bilkul end me EXACTLY ek fenced block do aur uske baad kuch na likho:
+```mina-panel
+{"name": "Chhota panel title", "rows": ["pehli short line", "dusri line", "DUE:2026-11-22"]}
+```
+rows panel ki lines hain: chhoti rakhna, user ki bhasha me. Panel kisi date ya countdown pe track karta hai to ek row "DUE:YYYY-MM-DD" bhi dena. Block ke andar sirf valid JSON."""
+
+    /** 在对话 [id] 里开始新任务 [rawGoal]:界面上加一问一答,交给服务(并行关着、服务还忙时排在它收尾后面)。 */
+    private fun begin(rawGoal: String, id: String) {
+        // Home ke "AI se panel banao" se aya ho to model ko block ka format bhi dena; screen pe chhota ask hi dikhega
+        val goal = if (rawGoal.trim() == tr(R.string.panel_ai_ask)) rawGoal.trim() + panelSpecInstruction else rawGoal
         lingerJob?.cancel()
         if (cloudEnabled() && cloudAgentFactory != null) {
             runCloud(goal)
@@ -712,7 +740,7 @@ class ChatViewModel(
             liveIndex = it.exchanges.size
             it.copy(
                 conversationId = id,
-                exchanges = it.exchanges + Exchange(goal, emptyList(), ExchangeStatus.Working, live = true, startedAt = clock()),
+                exchanges = it.exchanges + Exchange(rawGoal, emptyList(), ExchangeStatus.Working, live = true, startedAt = clock()),
                 blocked = null,
                 attachments = emptyList(),
                 pip = gated(PipUi(visible = true)),
@@ -810,6 +838,22 @@ class ChatViewModel(
         }
     }
 
+    /** Jawab ke end me mina-panel block ho to panel Home pe bana deta hai: block hata kar confirm ki line jodta hai. */
+    private fun finishPanel(answer: String): String {
+        if (panelSaver == null) return answer
+        val m = PANEL_BLOCK.find(answer) ?: return answer
+        val spec = runCatching {
+            val o = Json.parseToJsonElement(m.groupValues[1]).jsonObject
+            val name = o["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val rows = (o["rows"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+            if (name.isEmpty()) null else name to rows
+        }.getOrNull() ?: return answer
+        panelSaver.invoke(spec.first, spec.second)
+        val cleaned = stripPanel(answer)
+        val confirm = tr(R.string.panel_live, spec.first)
+        return if (cleaned.isEmpty()) confirm else cleaned + "\n\n" + confirm
+    }
+
     private fun handleServerResult(result: com.meenai.mina.server.ServerAgentRun.Result) {
         when (result) {
             is com.meenai.mina.server.ServerAgentRun.Result.Done -> {
@@ -818,7 +862,7 @@ class ChatViewModel(
                     val exchanges = ui.exchanges.toMutableList()
                     exchanges[liveIndex] = exchanges[liveIndex].copy(
                         steps = result.stepTitles.mapIndexed { i, title -> StepRow(i + 1, title, "", StepState.Ok) },
-                        status = ExchangeStatus.Done(answer = result.answer, evidence = null, verified = true, reviewed = false),
+                        status = ExchangeStatus.Done(answer = finishPanel(result.answer), evidence = null, verified = true, reviewed = false),
                     )
                     ui.copy(exchanges = exchanges, composer = ComposerMode.Idle)
                 }
@@ -1313,7 +1357,7 @@ class ChatViewModel(
                 ),
             )
             // 回答原样显示(不再有模型写的依据段);来源由运行记录里代码记下的那份给出
-            is TaskState.Succeeded -> ex.copy(status = ExchangeStatus.Done(s.answer.trim(), null, s.verified, s.note, s.unconfirmed, s.reviewed),
+            is TaskState.Succeeded -> ex.copy(status = ExchangeStatus.Done(stripPanel(s.answer.trim()), null, s.verified, s.note, s.unconfirmed, s.reviewed),
                 waitingForModel = false, draft = null, line = "")
             is TaskState.Failed -> ex.copy(status = ExchangeStatus.Failed(s.reason), waitingForModel = false, draft = null, line = "")
             TaskState.Cancelled -> ex.copy(status = ExchangeStatus.Cancelled(), waitingForModel = false, draft = null, line = "")
@@ -1364,8 +1408,8 @@ class ChatViewModel(
 
         private fun fromTurn(t: Turn): Exchange {
             val status = when (t.status) {
-                "succeeded" -> answerParts(t.outcome).let { (a, e) -> ExchangeStatus.Done(a, e) }
-                "unverified" -> answerParts(t.outcome).let { (a, e) -> ExchangeStatus.Done(a, e, verified = false, note = t.note, unconfirmed = t.unconfirmed) }
+                "succeeded" -> answerParts(t.outcome).let { (a, e) -> ExchangeStatus.Done(stripPanel(a), e) }
+                "unverified" -> answerParts(t.outcome).let { (a, e) -> ExchangeStatus.Done(stripPanel(a), e, verified = false, note = t.note, unconfirmed = t.unconfirmed) }
                 "cancelled" -> ExchangeStatus.Cancelled(Conversation.stopSummary(t))
                 else -> ExchangeStatus.Failed(t.outcome)
             }

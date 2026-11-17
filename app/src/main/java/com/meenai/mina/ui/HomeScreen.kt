@@ -339,6 +339,7 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, onSettings: () -> Unit, 
         SwipeToDeleteRow(onDelete = del) {
             if (p.kind == "weather") WeatherCard(p, onDelete = del)
             else if (p.kind == "calendar" || p.kind == "mail") ConnectorCard(p, onReconnect = onSettings, onDelete = del)
+            else if (p.kind == "custom") CustomCard(p, onAsk = { onAskAgent(tr(R.string.panel_ask_msg, p.name)) }, onDelete = del)
             else TrackCard(p, onAsk = { onAskAgent(tr(R.string.panel_ask_msg, p.name)) }, onDelete = del)
         }
     }
@@ -354,6 +355,7 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, onSettings: () -> Unit, 
     }
     if (create) PanelCreateDialog(
         onDismiss = { create = false; failed = false },
+        onAi = { create = false; onAskAgent(tr(R.string.panel_ai_ask)) },
         onCreate = { kind, text ->
             scope.launch {
                 if (kind == "weather") {
@@ -512,11 +514,39 @@ private fun TrackCard(p: HomePanel, onAsk: () -> Unit, onDelete: () -> Unit) {
     }
 }
 
+/** AI se banaya panel: title, chhota countdown (DUE:YYYY-MM-DD wali row) aur baaki rows. */
+@Composable
+private fun CustomCard(p: HomePanel, onAsk: () -> Unit, onDelete: () -> Unit) {
+    val c = MinaTheme.colors
+    val due = p.rows.firstOrNull { it.startsWith("DUE:") }?.removePrefix("DUE:")?.trim().orEmpty()
+    val dueDate = runCatching { java.time.LocalDate.parse(due) }.getOrNull()
+    MinaCard(Modifier.padding(bottom = 12.dp).clickable(onClick = onAsk)) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(c.accentSoft).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Text(tr(R.string.panel_kind_custom), style = MinaType.Caption, color = c.ink)
+            }
+            Text(p.name, Modifier.weight(1f).padding(start = 10.dp), style = MinaType.BodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            BarIconButton(MinaIcons.Trash, "", onDelete)
+        }
+        if (dueDate != null) {
+            val days = java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), dueDate)
+            if (days >= 0) {
+                Text(if (days == 0L) tr(R.string.panel_today) else tr(R.string.panel_days, days), Modifier.padding(start = 16.dp, top = 8.dp), style = MinaType.LargeTitle, color = c.ink)
+            }
+            Text(DateTimeFormatter.ofPattern("d MMM").format(dueDate), Modifier.padding(start = 16.dp, top = 2.dp), style = MinaType.Hint, color = c.ink3)
+        }
+        p.rows.filterNot { it.startsWith("DUE:") }.forEach { row ->
+            Text(row, Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp), style = MinaType.Body, color = c.ink2)
+        }
+        Text(tr(R.string.panel_updated, panelTime(p.updatedAt)), Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp), style = MinaType.Caption, color = c.ink3)
+    }
+}
+
 private fun panelTime(atMs: Long): String =
     if (atMs <= 0) "" else DateTimeFormatter.ofPattern("d MMM, h:mm a").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(atMs))
 
 @Composable
-private fun PanelCreateDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit, failed: Boolean) {
+private fun PanelCreateDialog(onDismiss: () -> Unit, onAi: () -> Unit, onCreate: (String, String) -> Unit, failed: Boolean) {
     val c = MinaTheme.colors
     var kind by remember { mutableStateOf("weather") }
     var text by remember { mutableStateOf("") }
@@ -525,7 +555,13 @@ private fun PanelCreateDialog(onDismiss: () -> Unit, onCreate: (String, String) 
         title = { Text(tr(R.string.panel_new_title), style = MinaType.Title, color = c.ink) },
         text = {
             Column {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.fill).clickable { onAi() }.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(tr(R.string.panel_ai_create), style = MinaType.BodyStrong, color = c.ink)
+                }
+                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     KindChip(tr(R.string.panel_kind_weather), kind == "weather") { kind = "weather" }
                     KindChip(tr(R.string.panel_kind_track), kind == "track") { kind = "track" }
                     KindChip(tr(R.string.panel_kind_calendar), kind == "calendar") { kind = "calendar" }
