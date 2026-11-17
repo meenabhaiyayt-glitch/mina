@@ -514,7 +514,8 @@ private fun MinaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
                 onOpenModels = { nav.push(Route.Models) }, webSites = webSites,
                 autonomous = autonomous, onAutonomous = app.approvalControl::setAutonomous,
                 updateVersion = updateState.update?.version, onOpenAbout = { nav.push(Route.About) },
-                onOpenPlans = { nav.push(Route.Plans) }, profile = memoryRuntime.profile())
+                onOpenPlans = { nav.push(Route.Plans) }, profile = memoryRuntime.profile(),
+                onOpenBrowser = { nav.push(Route.Browser) })
         }
         Route.Models -> ModelsScreen(store, onBack = back, onOpenSpeech = { nav.push(Route.SpeechModel) })
         Route.SpeechModel -> SpeechModelScreen(store, onBack = back)

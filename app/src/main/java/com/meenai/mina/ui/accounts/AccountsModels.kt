@@ -51,7 +51,7 @@ fun seedAccounts(): List<AccountItem> = listOf(
     AccountItem("zomato", "Zomato", null, R.drawable.logo_login_zomato, AccountType.LOGIN),
     AccountItem("paytm", "Paytm", null, R.drawable.logo_login_paytm, AccountType.LOGIN),
     AccountItem("phonepe", "PhonePe", null, R.drawable.logo_login_phonepe, AccountType.LOGIN),
-    AccountItem("groww", "Groww", null, R.drawable.logo_login_groww, AccountType.LOGIN, AccountStatus.SAVED_NOT_VERIFIED, MOCK_IDENTITY),
+    AccountItem("groww", "Groww", null, R.drawable.logo_login_groww, AccountType.LOGIN),
     AccountItem("zerodha", "Zerodha", null, R.drawable.logo_login_zerodha, AccountType.LOGIN),
     AccountItem("makemytrip", "MakeMyTrip", null, R.drawable.logo_login_makemytrip, AccountType.LOGIN),
     AccountItem("uber", "Uber", null, R.drawable.logo_login_uber, AccountType.LOGIN),

@@ -8,6 +8,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import android.content.Intent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.meenai.mina.browser.UserBrowser
+import com.meenai.mina.ui.accounts.LoginCatalog
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,13 +99,14 @@ import dev.chrisbanes.haze.hazeChild
 private data class AccountSection(val label: String?, val rows: List<AccountItem>)
 
 /**
- * Connected Accounts(Settings > Accounts 进来)。UI only 的 mock 版:
- * 数据在 [AccountsViewModel],OAuth / 加密存储都留了 TODO 钩子。
+ * Connected Accounts(Settings > Accounts 进来)。CONNECTION 走 Mina Cloud 真 OAuth;
+ * LOGIN 是真的:行尾的按钮写 Login,点开在 Mina 自己的浏览器里开那个网站的登录页,
+ * 登录后的会话 Cookie 留在 mina 网页配置里不会丢,回到这里(或浏览过网站再回来)行尾变成 Logged in。
  * 布局:钉住的 haze 顶栏(内容从下面滚过去被模糊)→ 已连卡片 → 玻璃分段标签
  * (HorizontalPager 同步,左右滑也切页)→ 分组玻璃卡 → 底部悬浮玻璃搜索。
  */
 @Composable
-fun AccountsScreen(onBack: () -> Unit) {
+fun AccountsScreen(onBack: () -> Unit, onOpenBrowser: () -> Unit = {}) {
     val vm: AccountsViewModel = viewModel()
     val state by vm.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -107,20 +114,41 @@ fun AccountsScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         val signed = runCatching { ServerRuntime.signedIn(context) }.getOrNull() == true
         vm.attach(if (signed) server else null, signed)
+        vm.refreshLogins(context)
+    }
+    // Browser se wapas aate hi login rows ka asli status dubara padho:
+    // abhi kaun sa login sach me hua hai, yahi bataega (registry + session Cookie).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshLogins(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
     val openUrl: (String) -> Unit = { url ->
         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+    // LOGIN rows: seedha Mina ke browser me us site ka asli login page khulta hai.
+    val openLogin: (AccountItem) -> Unit = { item ->
+        val entry = LoginCatalog.entry(item.id)
+        if (entry != null) {
+            val browser = UserBrowser.of(context)
+            browser.open(entry.loginUrl)
+            // Ye site aage browser ki start page (常用网站) pe bhi dikhe, apne logo ke saath.
+            browser.favorites.add(entry.loginUrl)
+            onOpenBrowser()
+        }
     }
     AccountsContent(
         state = state,
         onBack = onBack,
         onTab = vm::onTab,
         onQuery = vm::onQuery,
-        onOpen = vm::openSheet,
-        onRemove = vm::remove,
+        onOpen = { item -> if (item.type == AccountType.LOGIN) openLogin(item) else vm.openSheet(item) },
+        onRemove = { item -> vm.remove(item, context) },
         onDismiss = vm::dismissSheet,
-        onConnect = { item -> vm.connect(item, openUrl) },
-        onSaveLogin = vm::saveLogin,
+        onConnect = { item -> if (item.type == AccountType.LOGIN) openLogin(item) else vm.connect(item, openUrl) },
         onSaveKey = vm::saveKey,
     )
 }
@@ -136,7 +164,6 @@ fun AccountsContent(
     onRemove: (AccountItem) -> Unit,
     onDismiss: () -> Unit = {},
     onConnect: (AccountItem) -> Unit = {},
-    onSaveLogin: (String) -> Unit = {},
     onSaveKey: (String) -> Unit = {},
 ) {
     val c = MinaTheme.colors
@@ -317,7 +344,7 @@ fun AccountsContent(
                 loading = state.sheetLoading,
                 onDismiss = onDismiss,
                 onConnect = { state.sheet?.item?.let(onConnect) },
-                onSaveLogin = onSaveLogin,
+                onOpenLogin = { state.sheet?.item?.let(onConnect) },
                 onSaveKey = onSaveKey,
             )
 

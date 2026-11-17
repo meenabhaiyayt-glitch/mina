@@ -47,8 +47,9 @@ import com.meenai.mina.ui.theme.MinaType
 
 /**
  * Connect 弹出的玻璃底表,三种形态:
- * Connection -> 一句权限说明 + Continue(TODO: 真 OAuth);
- * Login -> 邮箱 + 密码(可切换明文),存成「已保存未验证」(TODO: 加密存储);
+ * Connection -> 一句权限说明 + Continue(已连 Mina Cloud 时是真 OAuth);
+ * Login -> 一句说明 + Login:去 Mina 自己的浏览器里打开这个网站真正的登录页,
+ *          登录留下的是真实的会话 Cookie,状态也只认真实证据(LoginCatalog);
  * API key -> 单个打码输入 + 粘贴,存完显示末 4 位(TODO: 加密存储)。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +59,7 @@ fun ConnectSheet(
     loading: Boolean,
     onDismiss: () -> Unit,
     onConnect: () -> Unit,
-    onSaveLogin: (String) -> Unit,
+    onOpenLogin: () -> Unit,
     onSaveKey: (String) -> Unit,
 ) {
     val item = target?.item ?: return
@@ -86,7 +87,7 @@ fun ConnectSheet(
             }
             when (item.type) {
                 AccountType.CONNECTION -> ConnectionBody(item, loading, onConnect)
-                AccountType.LOGIN -> LoginBody(onSaveLogin)
+                AccountType.LOGIN -> LoginBody(onOpenLogin)
                 AccountType.API_KEY -> KeyBody(onSaveKey)
             }
         }
@@ -108,20 +109,10 @@ private fun ConnectionBody(item: AccountItem, loading: Boolean, onConnect: () ->
 }
 
 @Composable
-private fun LoginBody(onSaveLogin: (String) -> Unit) {
+private fun LoginBody(onOpenLogin: () -> Unit) {
     val c = MinaTheme.colors
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    GlassField(value = email, onValueChange = { email = it }, hint = tr(R.string.accounts_email_hint))
-    GlassField(value = password, onValueChange = { password = it }, hint = tr(R.string.accounts_password_hint), password = true)
-    Text(tr(R.string.accounts_login_note), style = MinaType.Hint, color = c.ink3)
-    MinaButton(
-        tr(R.string.accounts_save_login),
-        { onSaveLogin(email) },
-        Modifier.fillMaxWidth(),
-        kind = ButtonKind.Primary,
-        enabled = email.isNotBlank() && password.isNotBlank(),
-    )
+    Text(tr(R.string.accounts_login_browser_note), style = MinaType.Body, color = c.ink2)
+    MinaButton(tr(R.string.accounts_login), onOpenLogin, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
 }
 
 @Composable

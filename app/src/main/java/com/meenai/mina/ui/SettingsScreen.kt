@@ -106,6 +106,8 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit = {},
     /** 计划任务(Plans)页。 */
     onOpenPlans: () -> Unit = {},
+    /** Accounts 页的 Login 从 Mina 自己的浏览器里开:把浏览器页顶上来的回调。 */
+    onOpenBrowser: () -> Unit = {},
     /** agent 的 profile 记忆:Profile 页写进去。 */
     profile: ProfileStore? = null,
 ) {
@@ -206,7 +208,7 @@ fun SettingsScreen(
             versionName = BuildConfig.VERSION_NAME, updateVersion = updateVersion,
         )
         SettingsPage.Profile -> ProfileScreen(profile, onBack = toHome)
-        SettingsPage.Accounts -> AccountsScreen(onBack = toHome)
+        SettingsPage.Accounts -> AccountsScreen(onBack = toHome, onOpenBrowser = onOpenBrowser)
         SettingsPage.Privacy -> PrivacyScreen(
             onOpenMemory = onOpenMemory,
             webSitesCount = webSites?.sites?.size,

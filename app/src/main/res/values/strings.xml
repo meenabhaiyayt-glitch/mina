@@ -226,6 +226,9 @@
     <string name="accounts_not_signed_in">Not signed in yet</string>
     <string name="accounts_connect">Connect</string>
     <string name="accounts_connected">Connected</string>
+    <string name="accounts_login">Login</string>
+    <string name="accounts_logged_in">Logged in</string>
+    <string name="accounts_login_browser_note">Opens this site\'s own login page in Mina\'s browser. Sign in once and your session stays saved on this device, so you stay logged in every time.</string>
     <string name="accounts_saved">Saved</string>
     <string name="accounts_no_match">No accounts match</string>
     <string name="accounts_back">Back</string>

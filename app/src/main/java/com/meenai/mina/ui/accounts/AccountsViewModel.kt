@@ -1,5 +1,6 @@
 package com.meenai.mina.ui.accounts
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meenai.mina.server.ServerRuntime
@@ -38,7 +39,9 @@ data class AccountsUiState(
 /**
  * Connected Accounts ViewModel. Real path for CONNECTION type: Mina Cloud's Composio-backed
  * endpoints (list / catalog / connect + OAuth in the browser / status poll / disconnect).
- * Logins and API keys stay mock until their real storage flow exists.
+ * Logins are real too: "Login" opens the site's own login page in Mina's browser, the session's
+ * cookies persist there, and the row's status is only ever real evidence (LoginCatalog.statusOf).
+ * API keys stay mock until their real storage flow exists.
  */
 class AccountsViewModel : ViewModel() {
 
@@ -119,14 +122,29 @@ class AccountsViewModel : ViewModel() {
         }
     }
 
+    /** Login rows ka asli status site registry + session Cookie se dubara padho; koi fake state nahi. */
+    fun refreshLogins(context: Context) {
+        _ui.update { st ->
+            st.copy(items = st.items.map { item ->
+                if (item.type != AccountType.LOGIN) item
+                else item.copy(status = LoginCatalog.statusOf(context, item.id), identity = null)
+            })
+        }
+    }
+
     fun openSheet(item: AccountItem) = _ui.update { it.copy(sheet = ConnectTarget(item), sheetLoading = false) }
 
     fun dismissSheet() = _ui.update { it.copy(sheet = null, sheetLoading = false) }
 
     /** CONNECTION + signed in: real OAuth. Continue -> Mina Cloud creates the connection, the
      * browser opens the OAuth page, and the status is polled in the background until it's done.
-     * Other cases (mock rows / signed out): the old demo fake loading. */
+     * LOGIN: the site's real login page (openUrl decides which browser). Signed-out CONNECTION rows:
+     * the old demo fake loading. */
     fun connect(item: AccountItem, openUrl: (String) -> Unit) {
+        if (item.type == AccountType.LOGIN) {
+            LoginCatalog.entry(item.id)?.let { openUrl(it.loginUrl) }
+            return
+        }
         val s = server
         if (item.type == AccountType.CONNECTION && s != null) {
             viewModelScope.launch {
@@ -174,19 +192,6 @@ class AccountsViewModel : ViewModel() {
         }
     }
 
-    /** TODO: store logins in EncryptedSharedPreferences / Keystore. Demo: saved as "saved but not verified". */
-    fun saveLogin(email: String) {
-        val item = _ui.value.sheet?.item ?: return
-        _ui.update { st ->
-            st.copy(
-                sheet = null,
-                items = st.items.map {
-                    if (it.id == item.id) it.copy(status = AccountStatus.SAVED_NOT_VERIFIED, identity = email.ifBlank { MOCK_IDENTITY }) else it
-                },
-            )
-        }
-    }
-
     /** TODO: encrypted storage. Demo: keep only the last 4 digits, like sk-…9F2a. */
     fun saveKey(key: String) {
         val item = _ui.value.sheet?.item ?: return
@@ -201,8 +206,9 @@ class AccountsViewModel : ViewModel() {
         }
     }
 
-    /** Real connection: DELETE /v1/connections/{id}; mock rows: local removal. */
-    fun remove(item: AccountItem) {
+    /** Real connection: DELETE /v1/connections/{id}. LOGIN: asli logout (site ke Cookie + registry entry hatao).
+     * API key mock rows: local removal. */
+    fun remove(item: AccountItem, context: Context) {
         val s = server
         val remote = item.remoteId
         if (item.type == AccountType.CONNECTION && s != null && remote != null) {
@@ -214,6 +220,9 @@ class AccountsViewModel : ViewModel() {
                 }
                 loadReal()
             }
+        } else if (item.type == AccountType.LOGIN) {
+            LoginCatalog.logout(context, item.id)
+            refreshLogins(context)
         } else {
             _ui.update { st ->
                 st.copy(items = st.items.map { if (it.id == item.id) it.copy(status = AccountStatus.NOT_CONNECTED, identity = null) else it })

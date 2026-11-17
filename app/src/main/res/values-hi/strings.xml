@@ -226,6 +226,9 @@
     <string name="accounts_not_signed_in">\u0905\u092D\u0940 \u0938\u093E\u0907\u0928 \u0907\u0928 \u0928\u0939\u0940\u0902 \u0939\u0948</string>
     <string name="accounts_connect">\u0915\u0928\u0947\u0915\u094D\u091F \u0915\u0930\u0947\u0902</string>
     <string name="accounts_connected">\u0915\u0928\u0947\u0915\u094D\u091F\u0947\u0921</string>
+    <string name="accounts_login">लॉग इन</string>
+    <string name="accounts_logged_in">लॉग इन है</string>
+    <string name="accounts_login_browser_note">Mina के ब्राउज़र में इस साइट का असली लॉगिन पेज खुलेगा। एक बार लॉगिन करने के बाद सेशन इसी डिवाइस पर सेव रहेगा, तो हर बार लॉग इन ही मिलेगा।</string>
     <string name="accounts_saved">\u0938\u0947\u0935 \u0915\u093F\u092F\u093E</string>
     <string name="accounts_no_match">\u0915\u094B\u0908 \u0905\u0915\u093E\u0909\u0902\u091F \u0928\u0939\u0940\u0902 \u092E\u093F\u0932\u093E</string>
     <string name="accounts_back">\u0935\u093E\u092A\u0938</string>

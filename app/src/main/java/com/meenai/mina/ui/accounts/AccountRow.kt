@@ -156,7 +156,11 @@ private fun AccountAction(item: AccountItem, onOpen: (AccountItem) -> Unit) {
         AccountStatus.CONNECTED -> {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(MinaIcons.Check, null, Modifier.size(15.dp), tint = c.ink2)
-                Text(tr(R.string.accounts_connected), style = AccountSubStyle.copy(fontWeight = FontWeight.Medium), color = c.ink2)
+                Text(
+                    tr(if (item.type == AccountType.LOGIN) R.string.accounts_logged_in else R.string.accounts_connected),
+                    style = AccountSubStyle.copy(fontWeight = FontWeight.Medium),
+                    color = c.ink2,
+                )
             }
         }
         AccountStatus.SAVED_NOT_VERIFIED -> {
@@ -172,7 +176,11 @@ private fun AccountAction(item: AccountItem, onOpen: (AccountItem) -> Unit) {
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(tr(R.string.accounts_connect), style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = InterTight), color = c.ink)
+                Text(
+                    tr(if (item.type == AccountType.LOGIN) R.string.accounts_login else R.string.accounts_connect),
+                    style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium, fontFamily = InterTight),
+                    color = c.ink,
+                )
             }
         }
     }
