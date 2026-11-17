@@ -355,6 +355,9 @@ class ChatViewModel(
     val keptPage: StateFlow<KeptPage?> = MutableStateFlow(null),
     /** 关掉留着的那一页(用户点了那一行上的「关闭」)。 */
     private val closeKept: () -> Unit = {},
+    /** 云端代理:开着时新的对话回合交给服务端的编排器跑(它连着用户已连接的账号),失败再落回本地。 */
+    private val cloudAgentFactory: (() -> com.meenai.mina.server.ServerAgentRun)? = null,
+    private val cloudEnabled: () -> Boolean = { false },
 ) {
     /** 用户在对话页上关掉留在后台的那一页。 */
     fun closeKeptPage() = closeKept()
@@ -694,6 +697,10 @@ class ChatViewModel(
     /** 在对话 [id] 里开始新任务 [goal]:界面上加一问一答,交给服务(并行关着、服务还忙时排在它收尾后面)。 */
     private fun begin(goal: String, id: String) {
         lingerJob?.cancel()
+        if (cloudEnabled() && cloudAgentFactory != null) {
+            runCloud(goal)
+            return
+        }
         // 这个对话的编号定下来了:胶囊之后接着它(新开的对话到这一刻才有编号)
         markCurrent(CurrentChat.Open(id))
         // 上一个任务收尾时先撤屏再报结束,这里读到的就是新任务开始前的样子;
@@ -778,6 +785,74 @@ class ChatViewModel(
 
     /** 原话的任务还没交给服务时插的话。 */
     private val held = mutableListOf<SteerNote>()
+
+    /** 云端代理的这轮跑动;在等的批准、取消、同意/拒绝都通过它。 */
+    private var serverRun: com.meenai.mina.server.ServerAgentRun? = null
+    private var cloudGoal: String? = null
+
+    /** 云端代理跑这一轮:过程只读地列出来,回答回来就当这轮办完;落不到地就把这轮交给本地代理。 */
+    private fun runCloud(goal: String) {
+        cloudGoal = goal
+        val run = cloudAgentFactory?.invoke()
+        if (run == null) {
+            fallbackCloud()
+            return
+        }
+        serverRun = run
+        _ui.update { ui ->
+            val exchanges = ui.exchanges.toMutableList()
+            exchanges[liveIndex] = exchanges[liveIndex].copy(line = tr(R.string.chat_server_working))
+            ui.copy(exchanges = exchanges)
+        }
+        scope.launch {
+            val result = runCatching { run.start(goal) }.getOrElse { com.meenai.mina.server.ServerAgentRun.Result.Failed(it.message ?: "network") }
+            handleServerResult(result)
+        }
+    }
+
+    private fun handleServerResult(result: com.meenai.mina.server.ServerAgentRun.Result) {
+        when (result) {
+            is com.meenai.mina.server.ServerAgentRun.Result.Done -> {
+                serverRun = null
+                _ui.update { ui ->
+                    val exchanges = ui.exchanges.toMutableList()
+                    exchanges[liveIndex] = exchanges[liveIndex].copy(
+                        steps = result.stepTitles.mapIndexed { i, title -> StepRow(i + 1, title, "", StepState.Ok) },
+                        status = ExchangeStatus.Done(answer = result.answer, evidence = null, verified = true, reviewed = false),
+                    )
+                    ui.copy(exchanges = exchanges, composer = ComposerMode.Idle)
+                }
+            }
+            is com.meenai.mina.server.ServerAgentRun.Result.NeedsApproval -> {
+                _ui.update { ui ->
+                    val exchanges = ui.exchanges.toMutableList()
+                    exchanges[liveIndex] = exchanges[liveIndex].copy(
+                        status = ExchangeStatus.NeedsConfirmation(title = tr(R.string.chat_server_approve_title), body = result.body, key = result.key),
+                    )
+                    ui.copy(exchanges = exchanges)
+                }
+            }
+            is com.meenai.mina.server.ServerAgentRun.Result.Failed -> {
+                if (serverRun != null) {
+                    _ui.update { ui ->
+                        val exchanges = ui.exchanges.toMutableList()
+                        exchanges[liveIndex] = exchanges[liveIndex].copy(line = tr(R.string.chat_server_failed))
+                        ui.copy(exchanges = exchanges)
+                    }
+                }
+                serverRun = null
+                fallbackCloud()
+            }
+        }
+    }
+
+    /** 云端这轮交不出去,落回本地代理接着同一轮。 */
+    private fun fallbackCloud() {
+        val goal = cloudGoal ?: return
+        cloudGoal = null
+        val id = _ui.value.conversationId ?: return
+        actions.start(goal, id)
+    }
 
     /**
      * 只收屏上这个对话的任务的状态;界面刚起来还没有对话时接上正在跑的那个(连同那个对话存下的轮次)。
@@ -930,8 +1005,34 @@ class ChatViewModel(
     fun finishedMyself() = act({ actions.finishedMyself() }) { actions.finishedMyselfIn(it) }
     fun skip() = act({ actions.skip() }) { actions.skipIn(it) }
     fun answer(text: String) = act({ actions.answer(text) }) { actions.answerIn(it, text) }
-    fun approve(key: Int) = act({ actions.approve(key) }) { actions.approveIn(it, key) }
-    fun decline(key: Int) = act({ actions.decline(key) }) { actions.declineIn(it, key) }
+    fun approve(key: Int) {
+        val run = serverRun
+        if (run != null && run.pendingKey == key) {
+            scope.launch {
+                val result = runCatching { run.decide(true) }.getOrElse { com.meenai.mina.server.ServerAgentRun.Result.Failed(it.message ?: "network") }
+                handleServerResult(result)
+            }
+            return
+        }
+        act({ actions.approve(key) }) { actions.approveIn(it, key) }
+    }
+    fun decline(key: Int) {
+        val run = serverRun
+        if (run != null && run.pendingKey == key) {
+            scope.launch {
+                runCatching { run.decide(false) }
+                serverRun = null
+                val ex = _ui.value.exchanges.getOrNull(liveIndex) ?: return@launch
+                _ui.update { ui ->
+                    val exchanges = ui.exchanges.toMutableList()
+                    exchanges[liveIndex] = exchanges[liveIndex].copy(status = ExchangeStatus.Failed(tr(R.string.chat_server_deny)))
+                    ui.copy(exchanges = exchanges)
+                }
+            }
+            return
+        }
+        act({ actions.decline(key) }) { actions.declineIn(it, key) }
+    }
 
     /**
      * 应用内的按钮:开关关着时作用于服务显示中的任务(M1);并行时带上按下那一刻屏上的对话,只作用于它的任务,

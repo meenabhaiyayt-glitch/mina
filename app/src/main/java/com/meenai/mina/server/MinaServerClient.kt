@@ -46,8 +46,8 @@ class MinaServerClient(
     suspend fun get(path: String, auth: Boolean = true): JsonElement =
         request("GET", path, body = null, auth = auth)
 
-    suspend fun post(path: String, body: JsonElement? = null, auth: Boolean = true): JsonElement =
-        request("POST", path, body, auth)
+    suspend fun post(path: String, body: JsonElement? = null, auth: Boolean = true, timeoutSeconds: Long = 0): JsonElement =
+        request("POST", path, body, auth, timeoutSeconds = timeoutSeconds)
 
     suspend fun patch(path: String, body: JsonElement, auth: Boolean = true): JsonElement =
         request("PATCH", path, body, auth)
@@ -62,6 +62,7 @@ class MinaServerClient(
         body: JsonElement?,
         auth: Boolean,
         attempt: Int = 0,
+        timeoutSeconds: Long = 0,
     ): JsonElement = withContext(Dispatchers.IO) {
         val url = (config.apiBaseUrl + path).toHttpUrl()
         val builder = Request.Builder().url(url).method(method, body?.let {
@@ -74,7 +75,11 @@ class MinaServerClient(
             builder.header("Authorization", "Bearer $token")
         }
         val response = try {
-            http.newCall(builder.build()).execute()
+            val client = if (timeoutSeconds > 0) http.newBuilder()
+                .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .callTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                .build() else http
+            client.newCall(builder.build()).execute()
         } catch (e: IOException) {
             throw if (isNetworkDown(e)) ServerFailure.Offline(e) else ServerFailure.Unreachable(e)
         }

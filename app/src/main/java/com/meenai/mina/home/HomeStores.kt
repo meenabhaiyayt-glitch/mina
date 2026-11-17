@@ -27,7 +27,7 @@ import java.net.URLEncoder
  */
 data class HomePanel(
     val id: String,
-    /** "weather" 或 "track"。 */
+    /** "weather"、"track" 或连接号面板 "calendar"、"mail"。 */
     val kind: String,
     /** weather 存城市名;track 存要留意的事。 */
     val name: String,
@@ -39,6 +39,10 @@ data class HomePanel(
     val code: Int? = null,
     val sunset: String? = null,
     val updatedAt: Long = 0,
+    /** Connector panels (calendar/mail): app-renderable lines from /v1/home/data. */
+    val rows: List<String> = emptyList(),
+    /** "" 正常;"reconnect" 连接过期要重连;"error" 暂时读不到。 */
+    val status: String = "",
 )
 
 class PanelsStore(context: Context) {
@@ -68,6 +72,8 @@ class PanelsStore(context: Context) {
                 temp = p("temp")?.doubleOrNull, code = p("code")?.intOrNull,
                 sunset = p("sunset")?.contentOrNull,
                 updatedAt = p("updatedAt")?.longOrNull ?: 0L,
+                rows = (o["rows"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
+                status = p("status")?.contentOrNull ?: "",
             )
         }
     }.getOrDefault(emptyList())
@@ -82,6 +88,8 @@ class PanelsStore(context: Context) {
                     p.country?.let { put("country", it) }
                     p.temp?.let { put("temp", it) }; p.code?.let { put("code", it) }
                     p.sunset?.let { put("sunset", it) }; put("updatedAt", p.updatedAt)
+                    put("rows", buildJsonArray { p.rows.forEach { add(JsonPrimitive(it)) } })
+                    put("status", p.status)
                 })
             }
         }

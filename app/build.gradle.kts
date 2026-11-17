@@ -115,6 +115,7 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze:0.9.0-rc03")
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.webkit)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
     // Mina Cloud sign-in: Firebase Auth session from the Credential Manager Google popup

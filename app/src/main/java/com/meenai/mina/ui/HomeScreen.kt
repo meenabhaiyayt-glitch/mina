@@ -59,6 +59,13 @@ import com.meenai.mina.R
 import com.meenai.mina.home.HomePanel
 import com.meenai.mina.home.HomeViewModel
 import com.meenai.mina.home.PanelsStore
+import com.meenai.mina.server.ServerRuntime
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import com.meenai.mina.home.SunPhase
 import com.meenai.mina.home.Weather
 import com.meenai.mina.home.WeatherData
@@ -187,7 +194,7 @@ fun HomeScreen(
                         }
                     }
                     item(key = "weather") { WeatherSection(vm, state.weather, state.isWeatherLoading, state.locationDenied, staggerBase) }
-                    item(key = "panels") { PanelsSection(onAskAgent, staggerBase + 1) }
+                    item(key = "panels") { PanelsSection(onAskAgent, onSettings, staggerBase + 1) }
                 }
             }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
@@ -293,7 +300,7 @@ private fun ActionCard(verb: String, title: String, subtitle: String, first: Boo
 // ---------- 面板 ----------
 
 @Composable
-private fun PanelsSection(onAskAgent: (String) -> Unit, staggerIndex: Int = 0) {
+private fun PanelsSection(onAskAgent: (String) -> Unit, onSettings: () -> Unit, staggerIndex: Int = 0) {
     val context = LocalContext.current
     val store = remember { PanelsStore.shared(context) }
     val scope = rememberCoroutineScope()
@@ -303,14 +310,26 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, staggerIndex: Int = 0) {
 
     LaunchedEffect(Unit) {
         panels = withContext(Dispatchers.IO) { store.all() }
-        // 天气卡在打开时刷新:半小时内的旧数据直接用
-        val stale = panels.filter { it.kind == "weather" && it.lat != null && it.lon != null && (it.temp == null || it.updatedAt < System.currentTimeMillis() - 30 * 60_000L) }
-        if (stale.isNotEmpty()) {
-            val fresh = stale.mapNotNull { p ->
-                val now = withContext(Dispatchers.IO) { Weather.now(p.lat!!, p.lon!!) } ?: return@mapNotNull null
-                p.copy(temp = now.temp, code = now.code, sunset = now.sunset, updatedAt = System.currentTimeMillis())
+        // 天气卡在打开时刷新:半小时内的旧数据直接用;连接号面板(calendar/mail)同一节奏,数据来自服务端已连接的账号
+        val now = System.currentTimeMillis()
+        val staleWeather = panels.filter { it.kind == "weather" && it.lat != null && it.lon != null && (it.temp == null || it.updatedAt < now - 30 * 60_000L) }
+        if (staleWeather.isNotEmpty()) {
+            val fresh = staleWeather.mapNotNull { p ->
+                val nowW = withContext(Dispatchers.IO) { Weather.now(p.lat!!, p.lon!!) } ?: return@mapNotNull null
+                p.copy(temp = nowW.temp, code = nowW.code, sunset = nowW.sunset, updatedAt = System.currentTimeMillis())
             }
             fresh.forEach { withContext(Dispatchers.IO) { store.put(it) } }
+            panels = withContext(Dispatchers.IO) { store.all() }
+        }
+        val connectorStale = panels.filter {
+            (it.kind == "calendar" || it.kind == "mail") && ServerRuntime.enabled &&
+                (it.rows.isEmpty() || it.updatedAt < now - 30 * 60_000L)
+        }
+        if (connectorStale.isNotEmpty()) {
+            connectorStale.forEach { p ->
+                val fresh = runCatching { syncConnector(context, p) }.getOrNull() ?: return@forEach
+                withContext(Dispatchers.IO) { store.put(fresh) }
+            }
             panels = withContext(Dispatchers.IO) { store.all() }
         }
     }
@@ -319,6 +338,7 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, staggerIndex: Int = 0) {
         val del: () -> Unit = { scope.launch { withContext(Dispatchers.IO) { store.remove(p.id) }; panels = store.all() } }
         SwipeToDeleteRow(onDelete = del) {
             if (p.kind == "weather") WeatherCard(p, onDelete = del)
+            else if (p.kind == "calendar" || p.kind == "mail") ConnectorCard(p, onReconnect = onSettings, onDelete = del)
             else TrackCard(p, onAsk = { onAskAgent(tr(R.string.panel_ask_msg, p.name)) }, onDelete = del)
         }
     }
@@ -346,6 +366,16 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, staggerIndex: Int = 0) {
                         temp = now?.temp, code = now?.code, sunset = now?.sunset, updatedAt = System.currentTimeMillis(),
                     )
                     withContext(Dispatchers.IO) { store.put(panel) }
+                } else if (kind == "calendar" || kind == "mail") {
+                    val panel = HomePanel(
+                        id = "c${System.currentTimeMillis()}", kind = kind,
+                        name = tr(if (kind == "calendar") R.string.panel_kind_calendar else R.string.panel_kind_mail),
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                    withContext(Dispatchers.IO) { store.put(panel) }
+                    // 放进去就拉一次数据;拉不到也留着,开页面时再试
+                    val synced = runCatching { syncConnector(context, panel) }.getOrNull()
+                    if (synced != null) withContext(Dispatchers.IO) { store.put(synced) }
                 } else {
                     withContext(Dispatchers.IO) { store.put(HomePanel("t${System.currentTimeMillis()}", "track", text.trim(), updatedAt = System.currentTimeMillis())) }
                 }
@@ -355,6 +385,88 @@ private fun PanelsSection(onAskAgent: (String) -> Unit, staggerIndex: Int = 0) {
         },
         failed = failed,
     )
+}
+
+/** 连接号面板(calendar/mail)从服务端拉一次快照:已连接的账号里读最近的事件/邮件,只读。 */
+private suspend fun syncConnector(context: android.content.Context, p: HomePanel): HomePanel {
+    val api = ServerRuntime.obtain(context).api
+    val data = api.homeData().jsonObject
+    val section = data[p.kind] as? JsonObject
+        ?: return p.copy(status = "error", updatedAt = System.currentTimeMillis())
+    val status = (section["status"] as? JsonPrimitive)?.contentOrNull ?: ""
+    val rows = (section["rows"] as? JsonArray)?.mapNotNull { el ->
+        val o = el as? JsonObject ?: return@mapNotNull null
+        if (p.kind == "calendar") {
+            val title = (o["title"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+            val start = (o["start"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            val when2 = eventTime(start)
+            if (when2.isBlank()) title else "$title · $when2"
+        } else {
+            val subject = (o["subject"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            val from = (o["from"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            val unread = (o["unread"] as? JsonPrimitive)?.booleanOrNull ?: false
+            buildString {
+                if (unread) append("• ")
+                if (from.isNotBlank()) append(from.substringBefore(' ').ifBlank { from })
+                if (subject.isNotBlank()) append(if (isEmpty()) subject else ": $subject")
+            }.ifBlank { null }
+        }
+    } ?: emptyList()
+    val st = when (status) {
+        "ok" -> ""
+        "not_connected", "reconnect" -> "reconnect"
+        else -> "error"
+    }
+    return p.copy(rows = rows, status = st, updatedAt = System.currentTimeMillis())
+}
+
+/** ISO 时间写成「d MMM, h:mm a」;解析不了就原样返回。 */
+private fun eventTime(iso: String): String = runCatching {
+    java.time.format.DateTimeFormatter.ofPattern("d MMM, h:mm a")
+        .withZone(java.time.ZoneId.systemDefault())
+        .format(java.time.Instant.parse(iso.replace(Regex("([+-]\\d{2}):(\\d{2})$"), "$1$2").replace("Z", "+0000")))
+}.getOrDefault(iso)
+
+@Composable
+private fun ConnectorCard(p: HomePanel, onReconnect: () -> Unit, onDelete: () -> Unit) {
+    val c = MinaTheme.colors
+    MinaCard(Modifier.padding(bottom = 12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(c.accentSoft).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Text(
+                    tr(if (p.kind == "calendar") R.string.panel_kind_calendar else R.string.panel_kind_mail),
+                    style = MinaType.Caption, color = c.ink,
+                )
+            }
+            Text(p.name, Modifier.weight(1f).padding(start = 10.dp), style = MinaType.BodyStrong, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            BarIconButton(MinaIcons.Trash, "", onDelete)
+        }
+        if (p.rows.isEmpty()) {
+            Text(
+                when (p.status) {
+                    "reconnect" -> tr(R.string.panel_reconnect_hint)
+                    "error" -> tr(R.string.panel_sync_fail)
+                    else -> tr(R.string.panel_no_data)
+                },
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MinaType.Caption, color = c.ink3,
+            )
+        } else {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                p.rows.take(5).forEach { row ->
+                    Text(row, style = MinaType.Body, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (p.status == "reconnect") {
+            TextButton(onClick = onReconnect, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)) {
+                Text(tr(R.string.panel_reconnect), color = c.ink)
+            }
+        }
+        Text(
+            tr(R.string.panel_updated, panelTime(p.updatedAt)),
+            Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), style = MinaType.Caption, color = c.ink3,
+        )
+    }
 }
 
 @Composable
@@ -416,6 +528,11 @@ private fun PanelCreateDialog(onDismiss: () -> Unit, onCreate: (String, String) 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     KindChip(tr(R.string.panel_kind_weather), kind == "weather") { kind = "weather" }
                     KindChip(tr(R.string.panel_kind_track), kind == "track") { kind = "track" }
+                    KindChip(tr(R.string.panel_kind_calendar), kind == "calendar") { kind = "calendar" }
+                    KindChip(tr(R.string.panel_kind_mail), kind == "mail") { kind = "mail" }
+                }
+                if (kind == "calendar" || kind == "mail") {
+                    Text(tr(R.string.panel_connector_hint), Modifier.padding(top = 10.dp), style = MinaType.Caption, color = c.ink3)
                 }
                 BasicTextField(
                     value = text, onValueChange = { text = it }, singleLine = true,
@@ -430,7 +547,7 @@ private fun PanelCreateDialog(onDismiss: () -> Unit, onCreate: (String, String) 
             }
         },
         confirmButton = {
-            TextButton(enabled = text.isNotBlank(), onClick = { onCreate(kind, text) }) { Text(tr(R.string.panel_add)) }
+            TextButton(enabled = text.isNotBlank() || kind == "calendar" || kind == "mail", onClick = { onCreate(kind, text) }) { Text(tr(R.string.panel_add)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr(R.string.cancel)) } },
     )

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.meenai.mina.R
 import com.meenai.mina.i18n.tr
+import com.meenai.mina.server.CloudAgentStore
 import com.meenai.mina.server.ServerRuntime
 import com.meenai.mina.ui.components.FooterNote
 import com.meenai.mina.ui.components.GroupCard
@@ -230,6 +232,15 @@ fun ServerConnectionsContent() {
                         if (signedIn == true) ValueTone.Ok else ValueTone.Warn,
                     )
                 }
+            }
+            Spacer(Modifier.height(12.dp))
+            // 云端代理:开着时聊天交给服务端的编排器(它连着下面这些账号),失败落回本地
+            var cloud by remember { mutableStateOf(CloudAgentStore.enabled(context)) }
+            GroupCard {
+                ListRow(MinaIcons.Link, tr(R.string.cloud_agent_title), onClick = { cloud = !cloud; CloudAgentStore.set(context, cloud) }) {
+                    Switch(checked = cloud, onCheckedChange = { cloud = it; CloudAgentStore.set(context, it) })
+                }
+                FooterNote(tr(R.string.cloud_agent_desc))
             }
             Spacer(Modifier.height(12.dp))
             GroupCard {

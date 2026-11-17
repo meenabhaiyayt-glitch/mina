@@ -27,6 +27,7 @@ import com.meenai.mina.memory.MemoryRuntime
 import com.meenai.mina.settings.ApprovalControl
 import com.meenai.mina.settings.ApprovalStore
 import com.meenai.mina.settings.FeatureFlags
+import com.meenai.mina.server.ServerRuntime
 import com.meenai.mina.cap.phone.PhoneServices
 import com.meenai.mina.replay.FileRouteStore
 import com.meenai.mina.settings.ProviderStore
@@ -277,6 +278,9 @@ class MinaApp : Application(), WebOwner, SandboxOwner, TaskEnvironment.Owner, Ph
             // 附件进对话的工作区,不需要运行环境已准备好:设备支持就给附件按钮
             sandboxReady = SandboxState.get(app).status.map { it !is SandboxStatus.Unsupported }
                 .stateIn(scope, SharingStarted.Eagerly, SandboxState.get(app).status.value !is SandboxStatus.Unsupported),
+            // 云端代理:开关开着时对话交给服务端的编排器(它连着已连接的账号);失败再落回本地
+            cloudAgentFactory = { com.meenai.mina.server.ServerAgentRun(ServerRuntime.obtain(app).api) },
+            cloudEnabled = { com.meenai.mina.server.CloudAgentStore.enabled(app) && ServerRuntime.enabled },
             sharedFiles = taskState.sharedFiles,
             activities = taskState.activities,
             steers = taskState.steers,
@@ -296,6 +300,14 @@ class MinaApp : Application(), WebOwner, SandboxOwner, TaskEnvironment.Owner, Ph
 
     override fun onCreate() {
         super.onCreate()
+        // 连接号面板(calendar/mail)后台半小时刷一次:已建的面板重新拉数据,只读
+        runCatching {
+            androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "mina-panel-sync",
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                androidx.work.PeriodicWorkRequestBuilder<com.meenai.mina.home.PanelSyncWorker>(30, java.util.concurrent.TimeUnit.MINUTES).build(),
+            )
+        }
         // 上次崩溃的现场留在 crash-latest.txt,下次启动界面先把它亮出来(见 MainActivity)
         val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

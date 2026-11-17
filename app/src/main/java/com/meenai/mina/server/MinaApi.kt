@@ -105,9 +105,12 @@ class MinaApi(private val client: MinaServerClient, private val sse: MinaSseClie
             put("role", role); put("content", content)
         })
 
+    // ---- Home panel data (connected accounts, read-only) ----
+    suspend fun homeData(): JsonElement = client.get("/v1/home/data")
+
     // ---- Cloud agent runs (orchestrator + approvals) ----
     suspend fun startRun(input: JsonElement): JsonElement =
-        client.post("/v1/agent/runs", input)
+        client.post("/v1/agent/runs", input, timeoutSeconds = 300)
     suspend fun run(runId: String): JsonElement = client.get("/v1/agent/runs/$runId")
     suspend fun runEvents(runId: String): JsonElement = client.get("/v1/agent/runs/$runId/events")
     suspend fun decideApproval(runId: String, approvalId: String, approve: Boolean): JsonElement =
