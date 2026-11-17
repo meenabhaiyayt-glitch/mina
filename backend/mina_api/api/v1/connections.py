@@ -85,6 +85,11 @@ async def toolkit_catalog(request: Request, user: CurrentUser) -> ToolkitCatalog
     """Toolkit catalog for the app's Connectors screen (usage-ordered)."""
     service = _service(request)
     items = await service.catalog()
+    base = str(request.base_url).rstrip("/")
+    for item in items:
+        logo = item.get("logo") or ""
+        if logo.startswith("/"):
+            item["logo"] = f"{base}{logo}"
     return ToolkitCatalogOut(items=[ToolkitCatalogItem(**item) for item in items])
 
 

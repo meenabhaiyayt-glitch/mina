@@ -8,6 +8,7 @@ from mina_api.api.v1 import (
     connections,
     conversations,
     health,
+    logos,
     me,
     memory,
     optimizer,
@@ -26,6 +27,7 @@ v1_router.include_router(providers.router)
 v1_router.include_router(routing.router)
 v1_router.include_router(optimizer.router)
 v1_router.include_router(tasks.router)
+v1_router.include_router(logos.router)
 v1_router.include_router(connections.router)
 v1_router.include_router(tools.router)
 v1_router.include_router(memory.router)

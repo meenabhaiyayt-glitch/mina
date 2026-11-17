@@ -187,12 +187,31 @@ class FakeTools:
 
 
 class FakeToolkits:
-    KNOWN = {"gmail", "googlecalendar", "googledrive", "github", "slack", "notion", "linkedin", "airtable"}
+    KNOWN = {"gmail", "googlecalendar", "googledrive", "googlemeet", "googlesheets",
+             "googledocs", "youtube", "whatsapp", "instagram", "twitter", "linkedin",
+             "github", "slack", "notion", "spotify", "outlook", "airtable", "zoom"}
 
     def get(self, slug=None, **kwargs):
         if slug not in self.KNOWN:
             raise composio_errors.NotFoundError(f"toolkit {slug} not found")
         return types.SimpleNamespace(slug=slug, name=slug)
+
+    def list(self, sort_by=None, limit=None):  # noqa: ARG002 - signature match
+        items = []
+        for slug in sorted(self.KNOWN):
+            items.append(
+                types.SimpleNamespace(
+                    slug=slug,
+                    name=slug.title(),
+                    no_auth=slug == "youtube",
+                    meta=types.SimpleNamespace(
+                        description=f"{slug} description",
+                        logo=f"https://logos.composio.dev/api/{slug}",
+                        categories=[types.SimpleNamespace(name="Productivity")],
+                    ),
+                )
+            )
+        return types.SimpleNamespace(items=items)
 
 
 class FakeComposio:
@@ -735,3 +754,37 @@ def test_execution_get_is_owner_only(cs_client, user_a, user_b):
     assert ok.status_code == 200
     foreign = cs_client.get(f"/v1/tools/executions/{execution_id}", headers=headers_for(user_b))
     assert foreign.status_code == 404
+
+# --------------------------------------------------------------------------
+# Curated catalog + bundled logos
+# --------------------------------------------------------------------------
+
+def test_catalog_shows_only_curated_connectors(cs_client, user_a):
+    resp = cs_client.get("/v1/connections/catalog", headers=headers_for(user_a))
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    from mina_api.integrations.composio import CURATED_CONNECTORS
+    assert [i["slug"] for i in items] == list(CURATED_CONNECTORS)
+    assert "airtable" not in [i["slug"] for i in items]
+    gmail = next(i for i in items if i["slug"] == "gmail")
+    assert gmail["logo"].endswith("/v1/logos/gmail.png")
+    assert gmail["logo"].startswith("http")
+    assert gmail["name"] == "Gmail"
+
+
+def test_catalog_logo_points_at_bundled_png_not_composio_svg(cs_client, user_a):
+    resp = cs_client.get("/v1/connections/catalog", headers=headers_for(user_a))
+    items = resp.json()["items"]
+    for item in items:
+        assert "logos.composio.dev" not in item["logo"]
+
+
+def test_connector_logo_served(cs_client):
+    resp = cs_client.get("/v1/logos/gmail.png")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/png")
+    assert resp.headers["cache-control"].startswith("public")
+    missing = cs_client.get("/v1/logos/nonexistent.png")
+    assert missing.status_code == 404
+    evil = cs_client.get("/v1/logos/..%2F..%2Fmain.py")
+    assert evil.status_code == 404

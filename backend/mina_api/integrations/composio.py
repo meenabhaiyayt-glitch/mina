@@ -200,6 +200,29 @@ def _validate_value(name: str, value: Any, spec: dict) -> list[str]:
     return errors
 
 
+# The Connectors screen shows only the connectors in daily use. Order here
+# is display order; the full Composio catalog stays available to the connect
+# flow, so any toolkit still connects.
+CURATED_CONNECTORS: tuple[str, ...] = (
+    "gmail",
+    "googlecalendar",
+    "googledrive",
+    "googlemeet",
+    "googlesheets",
+    "googledocs",
+    "youtube",
+    "whatsapp",
+    "instagram",
+    "twitter",
+    "linkedin",
+    "github",
+    "slack",
+    "notion",
+    "spotify",
+    "outlook",
+)
+
+
 class ComposioService:
     """Owns the server-side Composio SDK client and every cross-check that
     keeps one Mina user's connections and executions isolated from another's."""
@@ -383,26 +406,37 @@ class ComposioService:
         return result
 
     async def catalog(self, limit: int = 80) -> list[dict]:
-        """Toolkit catalog for the app's Connectors screen: Composio's catalog
-        ordered by usage, with name/description/logo for each app."""
+        """Toolkit catalog for the app's Connectors screen.
+
+        Only the connectors in CURATED_CONNECTORS are shown, in that order.
+        The bundled self-hosted logo (/v1/logos/<slug>.png) is used for each,
+        because Composio's own logo URLs serve SVG, which the app's image
+        loader cannot decode.
+        """
         sdk = self._sdk()
 
         def _run() -> list[Any]:
             return sdk.toolkits.list(sort_by="usage", limit=limit).items
 
         items = await self._call(_run)
-        out: list[dict] = []
+        by_slug: dict[str, Any] = {}
         for it in items or []:
-            meta = getattr(it, "meta", None)
-            cats = getattr(meta, "categories", None) or []
+            slug = getattr(it, "slug", "") or ""
+            if slug:
+                by_slug[slug] = it
+        out: list[dict] = []
+        for slug in CURATED_CONNECTORS:
+            it = by_slug.get(slug)
+            meta = getattr(it, "meta", None) if it is not None else None
+            cats = (getattr(meta, "categories", None) or []) if meta else []
             out.append(
                 {
-                    "slug": (getattr(it, "slug", "") or ""),
-                    "name": (getattr(it, "name", "") or ""),
-                    "description": (getattr(meta, "description", None) or "")[:180],
-                    "logo": (getattr(meta, "logo", None) or ""),
+                    "slug": slug,
+                    "name": (getattr(it, "name", "") or slug) if it is not None else slug,
+                    "description": ((getattr(meta, "description", None) or "")[:180]) if meta else "",
+                    "logo": f"/v1/logos/{slug}.png",
                     "categories": [str(getattr(c, "name", c)) for c in cats][:3],
-                    "no_auth": bool(getattr(it, "no_auth", False) or False),
+                    "no_auth": bool(getattr(it, "no_auth", False) or False) if it is not None else False,
                 }
             )
         return out
