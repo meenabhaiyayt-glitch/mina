@@ -373,6 +373,9 @@ class ChatViewModel(
     /** 云端代理:开着时新的对话回合交给服务端的编排器跑(它连着用户已连接的账号),失败再落回本地。 */
     private val cloudAgentFactory: (() -> com.meenai.mina.server.ServerAgentRun)? = null,
     private val cloudEnabled: () -> Boolean = { false },
+    /** Needle (offline): net na ho tab chhote kaam device ke chhote model pe; null = is build me band. */
+    private val needleRunner: (suspend (String) -> String)? = null,
+    private val needleEnabled: () -> Boolean = { false },
     /** Home panel banao: jawab se mina-panel block pakad kar panel Home pe live karta hai. */
     private val panelSaver: ((String, List<String>) -> Unit)? = null,
 ) {
@@ -729,6 +732,10 @@ rows panel ki lines hain: chhoti rakhna, user ki bhasha me. Panel kisi date ya c
             runCloud(goal)
             return
         }
+        if (needleEnabled() && needleRunner != null) {
+            runNeedle(goal, rawGoal, id)
+            return
+        }
         // 这个对话的编号定下来了:胶囊之后接着它(新开的对话到这一刻才有编号)
         markCurrent(CurrentChat.Open(id))
         // 上一个任务收尾时先撤屏再报结束,这里读到的就是新任务开始前的样子;
@@ -813,6 +820,36 @@ rows panel ki lines hain: chhoti rakhna, user ki bhasha me. Panel kisi date ya c
 
     /** 原话的任务还没交给服务时插的话。 */
     private val held = mutableListOf<SteerNote>()
+
+    /** Needle (offline) 的这一轮;和云端互不影响。 */
+    private var needleJob: kotlinx.coroutines.Job? = null
+
+    /** Needle (offline): device ke chhote model pe chalta hai, screen/pip nahi, jawab aate hi Done. */
+    private fun runNeedle(goal: String, rawGoal: String, id: String) {
+        markCurrent(CurrentChat.Open(id))
+        screenSeen = false
+        pipClosed = false
+        _ui.update {
+            liveIndex = it.exchanges.size
+            it.copy(
+                conversationId = id,
+                exchanges = it.exchanges + Exchange(rawGoal, emptyList(), ExchangeStatus.Working, live = true, startedAt = clock(), line = tr(R.string.needle_working)),
+                blocked = null,
+                attachments = emptyList(),
+                pip = gated(PipUi(visible = false)),
+                composer = ComposerMode.Busy,
+            )
+        }
+        needleJob = scope.launch {
+            val text = runCatching { needleRunner?.invoke(goal) }.getOrNull()?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: tr(R.string.needle_error)
+            _ui.update { ui ->
+                val exchanges = ui.exchanges.toMutableList()
+                exchanges[liveIndex] = exchanges[liveIndex].copy(status = ExchangeStatus.Done(answer = text, evidence = null, reviewed = false))
+                ui.copy(exchanges = exchanges, composer = ComposerMode.Idle)
+            }
+        }
+    }
 
     /** 云端代理的这轮跑动;在等的批准、取消、同意/拒绝都通过它。 */
     private var serverRun: com.meenai.mina.server.ServerAgentRun? = null

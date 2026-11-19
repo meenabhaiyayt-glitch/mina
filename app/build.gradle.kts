@@ -118,6 +118,8 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
+    // Needle (offline): Cactus ka local engine, device pe tool-calling chhota model
+    implementation("com.cactuscompute:cactus:1.4.1-beta")
     // Mina Cloud sign-in: Firebase Auth session from the Credential Manager Google popup
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

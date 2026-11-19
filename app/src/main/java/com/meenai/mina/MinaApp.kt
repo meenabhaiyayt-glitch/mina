@@ -268,6 +268,9 @@ class MinaApp : Application(), WebOwner, SandboxOwner, TaskEnvironment.Owner, Ph
             liveRunId = { taskState.run(it)?.runId?.value },
             endedRunIds = taskState.endedRunIds,
             parallelFlag = { FeatureFlags.get(app).speedFlags().parallelTasks },
+            // Needle (offline): net na ho to chhote kaam device ke chhote model pe
+            needleEnabled = { com.meenai.mina.offline.NeedleRuntime.enabled(app) && !com.meenai.mina.offline.NeedleRuntime.online(app) },
+            needleRunner = { goal -> com.meenai.mina.offline.NeedleRuntime.answer(app, goal) },
             shownTask = taskState.shownTask,
             activeConversations = taskState.activeConversations,
             runGoal = { taskState.run(it)?.goal },

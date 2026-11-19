@@ -274,4 +274,18 @@
     <string name="chat_server_allow">Allow once</string>
     <string name="chat_server_deny">Deny</string>
     <string name="chat_server_run_fail">Couldn\'t reach the cloud agent</string>
+    <string name="needle_title">Needle (offline)</string>
+    <string name="needle_card_desc">A small model that runs on the phone. When internet is off, quick tasks still work: alarm, timer, open an app, make a panel. Downloads once, about 600 MB.</string>
+    <string name="needle_download">Download model</string>
+    <string name="needle_downloading">Downloading the model\u2026</string>
+    <string name="needle_ready">Model ready. Works when you are offline.</string>
+    <string name="needle_working">Asking the offline model\u2026</string>
+    <string name="needle_error">The offline model could not answer. Try again.</string>
+    <string name="needle_no_answer">The offline model had no answer.</string>
+    <string name="needle_done_alarm">Alarm set for %1$s.</string>
+    <string name="needle_done_timer">Timer set for %1$s min.</string>
+    <string name="needle_done_open">Opened %1$s.</string>
+    <string name="needle_done_panel">&quot;%1$s&quot; panel is live on your Home</string>
+    <string name="needle_no_app">No app named %1$s was found.</string>
+    <string name="needle_fail">Could not do it: %1$s</string>
 </resources>

@@ -280,6 +280,7 @@ fun ModelSetupContent(ui: ModelSetupUi, onboarding: Boolean, actions: ModelSetup
                 } else {
                     RolesSection(ui, onPick, actions.setReasoningEffort, actions.openSpeech, actions.setModelContext)
                     ProvidersSection(ui, actions)
+                    NeedleCard()
                 }
                 Spacer(Modifier.height(16.dp))
             }

@@ -104,6 +104,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Needle (offline) ka local engine: context ek hi baar set hota hai; telemetry band
+        runCatching { com.cactus.CactusContextInitializer.initialize(this) }
         requestedConversation = intent.getStringExtra(EXTRA_OPEN_CONVERSATION)
         monitor = SystemStatusMonitor(this, PhoneServices.of(this).shellControl)
         val store = ProviderStore.get(this)
