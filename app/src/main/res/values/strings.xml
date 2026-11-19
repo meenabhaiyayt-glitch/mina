@@ -275,7 +275,7 @@
     <string name="chat_server_deny">Deny</string>
     <string name="chat_server_run_fail">Couldn\'t reach the cloud agent</string>
     <string name="needle_title">Needle (offline)</string>
-    <string name="needle_card_desc">A small model that runs on the phone. When internet is off, quick tasks still work: alarm, timer, open an app, make a panel. Downloads once, about 600 MB.</string>
+    <string name="needle_card_desc">A small model that runs on the phone. When internet is off, quick tasks still work: alarm, timer, open an app, make a panel, flashlight, dialer, battery check, date and time. Downloads once, about 600 MB.</string>
     <string name="needle_download">Download model</string>
     <string name="needle_downloading">Downloading the model\u2026</string>
     <string name="needle_ready">Model ready. Works when you are offline.</string>
@@ -288,4 +288,8 @@
     <string name="needle_done_panel">&quot;%1$s&quot; panel is live on your Home</string>
     <string name="needle_no_app">No app named %1$s was found.</string>
     <string name="needle_fail">Could not do it: %1$s</string>
+    <string name="needle_done_dial">Dialer open for %1$s.</string>
+    <string name="needle_done_torch_on">Flashlight on.</string>
+    <string name="needle_done_torch_off">Flashlight off.</string>
+    <string name="needle_done_battery">Battery is at %1$s%%.</string>
 </resources>

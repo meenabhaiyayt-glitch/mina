@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
+import android.os.BatteryManager
 import android.provider.AlarmClock
 import com.cactus.CactusCompletionParams
 import com.cactus.CactusInitParams
@@ -76,7 +78,7 @@ object NeedleRuntime {
         }
         val result = model.generateCompletion(
             messages = listOf(
-                ChatMessage(content = SYSTEM, role = "system"),
+                ChatMessage(content = systemPrompt(), role = "system"),
                 ChatMessage(content = goal, role = "user"),
             ),
             params = CactusCompletionParams(tools = tools(), maxTokens = 200),
@@ -92,7 +94,10 @@ object NeedleRuntime {
         }.joinToString("\n")
     }
 
-    private const val SYSTEM = "You are Mina's offline assistant running on the user's phone with no internet. " +
+    private fun systemPrompt(): String = SYSTEM_TEXT + " Current date and time: " +
+        java.text.SimpleDateFormat("EEEE, d MMMM yyyy, h:mm a", java.util.Locale.getDefault()).format(java.util.Date()) + "."
+
+    private const val SYSTEM_TEXT = "You are Mina's offline assistant running on the user's phone with no internet. " +
         "Do quick tasks only. If one of your tools fits the request, call it. " +
         "Keep answers to one short sentence, in the language the user wrote in. Never ask follow-up questions."
 
@@ -117,6 +122,22 @@ object NeedleRuntime {
             parameters = mapOf(
                 "app_name" to ToolParameter(type = "string", description = "App name, e.g. WhatsApp", required = true),
             ),
+        ),
+        createTool(
+            name = "dial_number", description = "Open the phone dialer with a number ready to call (does not call by itself)",
+            parameters = mapOf(
+                "phone_number" to ToolParameter(type = "string", description = "Phone number to dial", required = true),
+            ),
+        ),
+        createTool(
+            name = "toggle_flashlight", description = "Turn the phone flashlight (torch) on or off",
+            parameters = mapOf(
+                "on" to ToolParameter(type = "boolean", description = "true to turn on, false to turn off", required = true),
+            ),
+        ),
+        createTool(
+            name = "battery_level", description = "Report the current battery percentage",
+            parameters = emptyMap(),
         ),
         createTool(
             name = "create_panel", description = "Create a panel card on the app Home screen",
@@ -203,6 +224,35 @@ object NeedleRuntime {
                 PanelsStore.shared(app).create("custom", title, rows)
                 app.getString(R.string.needle_done_panel, title)
             }
+        }
+        "dial_number" -> {
+            val number = a.optString("phone_number", "").replace(" ", "").trim()
+            if (number.isEmpty()) app.getString(R.string.needle_fail, name)
+            else {
+                app.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                app.getString(R.string.needle_done_dial, number)
+            }
+        }
+        "toggle_flashlight" -> {
+            val on = a.optBoolean("on", true)
+            runCatching {
+                val cm = app.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
+                val id = cm.cameraIdList.firstOrNull {
+                    cm.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                }
+                if (id == null) app.getString(R.string.needle_fail, name)
+                else {
+                    cm.setTorchMode(id, on)
+                    app.getString(if (on) R.string.needle_done_torch_on else R.string.needle_done_torch_off)
+                }
+            }.getOrElse { app.getString(R.string.needle_fail, name) }
+        }
+        "battery_level" -> {
+            val i = app.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+            if (level < 0) app.getString(R.string.needle_fail, name)
+            else app.getString(R.string.needle_done_battery, ((level * 100) / scale).toString())
         }
         else -> app.getString(R.string.needle_fail, name)
     }
